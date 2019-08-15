@@ -21,6 +21,7 @@ import (
 	"github.com/micro/go-micro/errors"
 	"github.com/micro/go-micro/registry"
 	"github.com/micro/go-micro/util/ctx"
+	"google.golang.org/grpc/balancer"
 )
 
 const (
@@ -60,8 +61,8 @@ func (b *buffer) Write(_ []byte) (int, error) {
 }
 
 // strategy is a hack for selection
-func strategy(services []*registry.Service) selector.Strategy {
-	return func(_ []*registry.Service) selector.Next {
+func strategy(_ []*registry.Service) selector.Strategy {
+	return func(services []*registry.Service) selector.Next {
 		// ignore input to this function, use services above
 		return selector.Random(services)
 	}
@@ -139,8 +140,18 @@ func (h *rpcHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		)
 
 		// make the call
-		if err := c.Call(cx, req, response, client.WithSelectOption(so)); err != nil {
-			writeError(w, r, err)
+		var e error
+		for i := 0; i < 2; i++ {
+			e = c.Call(cx, req, &response, client.WithSelectOption(so));
+			if e == nil {
+				break
+			} else if ce := errors.Parse(e.Error());
+				ce.Detail != "" && !strings.Contains(ce.Detail, balancer.ErrTransientFailure.Error()) {
+				break
+			}
+		}
+		if e != nil { // tmp handle
+			writeError(w, r, e)
 			return
 		}
 

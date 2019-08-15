@@ -30,3 +30,4 @@ _cgo_export.*
 *~
 *.swp
 *.swo
+.idea
